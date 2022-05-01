@@ -3,6 +3,7 @@ import gurobipy as gp
 from gurobipy import GRB
 import networkx as nx
 import matplotlib.pyplot as plt
+import custom as ct
 
 
 graphNodeNum = 5
@@ -31,11 +32,12 @@ edges, lengths, capacities = gp.multidict({
     (4,2): [5,45]
 })
 
-
-
+gp.setParam('OutputFlag', 0)
+gp.setParam('Heuristics', 0)
+gp.setParam('PreCrush', 1)
 model = gp.Model('MCFlow')
 flow = model.addVars(stPairs, edges,lb=0.0, name="flow")
-delta = model.addVar(lb=0.0)
+delta = model.addVar(lb=0.0, name="delta")
 
 model.setObjective(delta, GRB.MAXIMIZE)
 
@@ -55,13 +57,17 @@ for s,t in stPairs:
             model.addConstr(gp.quicksum(flow[s,t,u,v] for u,v in edges.select(node,'*'))\
              - gp.quicksum(flow[s,t,u,v] for u,v in edges.select('*', node)) == 0, "node")
 
-model.optimize()
+model._vars = model.getVars()
+model.optimize(ct.testCallback)
+'''
+for v in model.getVars():
+    print('%s %g' % (v.varName, v.x))
+    
 
+print(model.getAttr('X', flow))
+'''
 
-solution = model.getAttr('X', flow)
-print(delta)
-
-
+'''
 G = nx.DiGraph()
 for nodeItem in nodes:
     attrStr = ":"
@@ -74,3 +80,4 @@ for edgeItem in edges:
 labels = nx.get_node_attributes(G, 'id') 
 nx.draw(G, labels=labels)
 plt.show()
+'''

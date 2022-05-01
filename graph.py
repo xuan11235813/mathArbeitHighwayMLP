@@ -54,6 +54,8 @@ class Graph:
                     edgeItemInverse = DirectedEdge(edgeItem.vIndex,edgeItem.uIndex,edgeItem.length,edgeItem.capacity)
                     self.edges.append(edgeItem)
                     self.edges.append(edgeItemInverse)
+        
+
     def generateRandomDemand(self, demandNum, demandLB, demandUB):
         if len(self.nodes) * (len(self.nodes) - 1) * 0.3 <= demandNum:
             return False
@@ -150,16 +152,20 @@ class Graph:
                 data = line.split(",")
                 demandItem = Demand(int(data[0]), int(data[1]), float(data[2]))
                 self.demands.append(demandItem)
+    def generateSTPairDemands(self):
+        returnDemands = {}
+        for item in self.demands:
+            pos = (item.sourceNodeIndex, item.targetNodeIndex)
+            returnDemands[pos] = item.localDemand
+        return returnDemands
+    def generateEdgeLengthCapacity(self):
+        returnLC = {}
+        for item in self.edges:
+            pos = (item.uIndex, item.vIndex)
+            value = [item.length, item.capacity]
+            returnLC[pos] = value
+        return returnLC
+    def getNodeNum(self):
+        return len(self.nodes)
 
 
-
-
-g = Graph()
-
-g.generateRandomGraphWith(20, 0.15, 20,40)
-g.generateRandomDemand(40,15,30)
-g.showGraph()
-g.saveToFileWithName(0)
-g.readFromFile("graph0.gra")
-g.saveToFileWithName(1)
-g.showGraph()
