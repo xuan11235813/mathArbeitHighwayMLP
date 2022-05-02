@@ -1,16 +1,16 @@
 import gurobipy as gp
 from gurobipy import GRB
-
-def solveGraph(demandPairs, edgeLengthCapacity, nodeNum):
+gp.setParam('OutputFlag', 0)
+gp.setParam('Heuristics', 0)
+def solveConcurrentFlow(demandPairs, edgeLengthCapacity, nodeNum):
     nodes = range(nodeNum)
     stPairs, demands =gp.multidict(demandPairs)
-    edges, lengths, capacities = gp.multidict(edgeLengthCapacity)
+    edges, _, capacities = gp.multidict(edgeLengthCapacity)
     model = gp.Model('MCFlow')
     flow = model.addVars(stPairs, edges,lb=0.0, name="flow")
     delta = model.addVar(lb=0.0)
 
     model.setObjective(delta, GRB.MAXIMIZE)
-
     # capacity constraints
     for u,v in edges:
         model.addConstr(sum(flow[s,t,u,v] for s,t in stPairs) <= capacities[u,v], "cap[%s,%s]" % (u,v))
@@ -30,5 +30,70 @@ def solveGraph(demandPairs, edgeLengthCapacity, nodeNum):
     model.optimize()
 
 
-    solution = model.getAttr('X', flow)
-    print(delta)
+    obj = model.getObjective()
+    return obj.getValue()
+def solveDirectMIPGP(demandPairs, edgeLengthCapacityIsUnderConstructWeight, constructEdgeSet, nodeNum):
+    nodes = range(nodeNum)
+    stPairs, demands =gp.multidict(demandPairs)
+    edges, _, capacities, _, weight = gp.multidict(edgeLengthCapacityIsUnderConstructWeight)
+    model = gp.Model('directMIP')
+    flow = model.addVars(stPairs, edges, lb=0.0, name="flow")
+    conSet = model.addVars(constructEdgeSet, lb=0.0, ub=1.0, vtype=GRB.BINARY, name="conSet")
+
+    model.setObjective(gp.quicksum(weight[u,v]*conSet[u,v] for u,v in constructEdgeSet), GRB.MAXIMIZE)
+    for u,v in edges:
+        if (u,v) in constructEdgeSet:
+            model.addConstr(sum(flow[s,t,u,v] for s,t in stPairs) <= capacities[u,v] * (1 - conSet[u,v]), "cap[%s,%s]" % (u,v))
+        else:
+            model.addConstr(sum(flow[s,t,u,v] for s,t in stPairs) <= capacities[u,v], "cap[%s,%s]" % (u,v))
+    for s,t in stPairs:
+        for node in nodes:
+            if node == s:
+                model.addConstr(gp.quicksum(flow[s,t,u,v] for u,v in edges.select(node,'*'))\
+                - gp.quicksum(flow[s,t,u,v] for u,v in edges.select('*', node)) == demands[s,t], "node")
+            elif node == t:
+                model.addConstr(gp.quicksum(flow[s,t,u,v] for u,v in edges.select(node,'*'))\
+                - gp.quicksum(flow[s,t,u,v] for u,v in edges.select('*', node)) == -demands[s,t], "node")
+            else:
+                model.addConstr(gp.quicksum(flow[s,t,u,v] for u,v in edges.select(node,'*'))\
+                - gp.quicksum(flow[s,t,u,v] for u,v in edges.select('*', node)) == 0, "node")
+
+    model.optimize()
+    objValue = model.getObjective().getValue()
+    #conSetResult = [var.X for var in model.getVars() if "conSet" in var.VarName]
+    conSetResult = {}
+    for u,v in conSet:
+        conSetResult[u,v] = conSet[u,v].X
+
+    return objValue, conSetResult
+
+
+def solveDualConcurrentLP(demandPairs, edgeLengthCapacityIsUnderConstructWeight, conSetStateDict,  nodeNum):
+    nodes = range(nodeNum)
+    stPairs, demands =gp.multidict(demandPairs)
+    edges, _, capacities, _, _ = gp.multidict(edgeLengthCapacityIsUnderConstructWeight)
+    model = gp.Model('dualConcurrentLP')
+    beta = model.addVars(stPairs, nodes, lb=0.0, name="beta")
+    alpha = model.addVars(edges, lb=0.0, name="alpha")
+    edgeNoConstruct=[]
+    for u,v in edges:
+        if (u,v) not in conSetStateDict:
+            edgeNoConstruct.append((u,v))
+    
+    model.setObjective(gp.quicksum(capacities[u,v]*alpha[u,v] for u,v in edgeNoConstruct)\
+        +gp.quicksum(capacities[u,v]*(1 - conSetStateDict[u,v])*alpha[u,v] for u,v in conSetStateDict),
+         GRB.MINIMIZE)
+
+    for u,v in edges:
+        for s,t in stPairs:
+            model.addConstr(alpha[u,v] + beta[s,t,u] - beta[s,t,v] >= 0, "beta")
+    model.addConstr(gp.quicksum(demands[s,t] * (beta[s,t,t] - beta[s,t,s]) for s,t in demandPairs) == 1)
+
+    model.optimize()
+    objValue = model.getObjective().getValue()
+    alphaValue = {}
+    for u,v in alpha:
+        alphaValue[u,v] = alpha[u,v].X
+    return objValue, alphaValue
+
+

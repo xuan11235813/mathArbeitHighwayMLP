@@ -23,11 +23,14 @@ class DirectedEdge:
     vIndex = 0
     length = 0.0
     capacity = 0.0
-    def __init__(self, uIndex, vIndex, length, capacity):
+    weight = 0.0
+    isUnderConstruct = 0
+    def __init__(self, uIndex, vIndex, length, capacity, weight):
         self.uIndex = uIndex
         self.vIndex = vIndex
         self.length = length
         self.capacity = capacity
+        self.weight = weight
 
 
 class Graph:
@@ -43,15 +46,17 @@ class Graph:
         self.nodes = nodes
         self.edges = edges
 
-    def generateRandomGraphWith(self, nodeNum, edgeGenerationProbability, capacityLB, capacityUB):
+    def generateRandomGraphWith(self, nodeNum, edgeGenerationProbability, capacityLB, capacityUB, weightLB, weightUB):
         for i in range(nodeNum):
             nodeItem = Node(i)
             self.nodes.append(nodeItem)
         for i in range(nodeNum):
             for j in range(nodeNum):
                 if rd.uniform(0, 1) <= edgeGenerationProbability and i < j:
-                    edgeItem = DirectedEdge(i,j,float(round(rd.uniform(1,11))),float(round(rd.uniform(capacityLB,capacityUB))))
-                    edgeItemInverse = DirectedEdge(edgeItem.vIndex,edgeItem.uIndex,edgeItem.length,edgeItem.capacity)
+                    edgeItem = DirectedEdge(i,j,float(round(rd.uniform(1,11))),\
+                        float(round(rd.uniform(capacityLB,capacityUB))), \
+                        float(round(rd.uniform(weightLB,weightUB))))
+                    edgeItemInverse = DirectedEdge(edgeItem.vIndex,edgeItem.uIndex,edgeItem.length,edgeItem.capacity, edgeItem.weight)
                     self.edges.append(edgeItem)
                     self.edges.append(edgeItemInverse)
         
@@ -73,9 +78,15 @@ class Graph:
         for nodeItem in self.nodes:
             G.add_node(nodeItem.nodeIndex, id=str(nodeItem.nodeIndex))
         for edgeItem in self.edges:
-            G.add_edge(edgeItem.uIndex, edgeItem.vIndex)
+            if edgeItem.isUnderConstruct == 1:
+                G.add_edge(edgeItem.uIndex, edgeItem.vIndex, color = 'r')
+            else:
+                G.add_edge(edgeItem.uIndex, edgeItem.vIndex, color = 'g')
+        edges = G.edges()
+        pos = nx.kamada_kawai_layout(G)
+        colors = [G[u][v]['color'] for u,v in edges]
         labels = nx.get_node_attributes(G, 'id') 
-        nx.draw(G, labels=labels)
+        nx.draw(G, pos, labels=labels, edge_color = colors)
         plt.show()
     def saveToFile(self):
         now = datetime.now()
@@ -91,7 +102,9 @@ class Graph:
             f.write(str(self.edges[i].uIndex) + ',')
             f.write(str(self.edges[i].vIndex) + ',')
             f.write(str(self.edges[i].length) + ',')
-            f.write(str(self.edges[i].capacity) + '\n')
+            f.write(str(self.edges[i].capacity) + ',')
+            f.write(str(self.edges[i].isUnderConstruct) + ',')
+            f.write(str(self.edges[i].weight) + '\n')
         f.write(str(len(self.demands)) + '\n')
         for i in range(len(self.demands)):
             f.write(str(self.demands[i].sourceNodeIndex) + ',')
@@ -107,7 +120,9 @@ class Graph:
             f.write(str(self.edges[i].uIndex) + ',')
             f.write(str(self.edges[i].vIndex) + ',')
             f.write(str(self.edges[i].length) + ',')
-            f.write(str(self.edges[i].capacity) + '\n')
+            f.write(str(self.edges[i].capacity) + ',')
+            f.write(str(self.edges[i].isUnderConstruct) + ',')
+            f.write(str(self.edges[i].weight) + '\n')
         f.write(str(len(self.demands)) + '\n')
         for i in range(len(self.demands)):
             f.write(str(self.demands[i].sourceNodeIndex) + ',')
@@ -139,7 +154,8 @@ class Graph:
                 count = 0
             elif state == 3 and readNum != 0:
                 data = line.split(",")
-                edgeItem = DirectedEdge(int(data[0]), int(data[1]), float(data[2]), float(data[3]))
+                edgeItem = DirectedEdge(int(data[0]), int(data[1]), float(data[2]), float(data[3]), float(data[5]))
+                edgeItem.isUnderConstruct = int(data[4])
                 self.edges.append(edgeItem)
                 count = count + 1
                 if count  ==  readNum:
@@ -165,7 +181,39 @@ class Graph:
             value = [item.length, item.capacity]
             returnLC[pos] = value
         return returnLC
+    def generateEdgeLengthCapacityIsUnderconstruct(self):
+        returnLCIsC = {}
+        for item in self.edges:
+            pos = (item.uIndex, item.vIndex)
+            value = [item.length, item.capacity, item.isUnderConstruct]
+            returnLCIsC[pos] = value
+        return returnLCIsC
+    def generateEdgeLengthCapacityIsUnderconstructWeight(self):
+        returnLCIsCW = {}
+        for item in self.edges:
+            pos = (item.uIndex, item.vIndex)
+            value = [item.length, item.capacity, item.isUnderConstruct, item.weight]
+            returnLCIsCW[pos] = value
+        return returnLCIsCW
+    def generateConstructSet(self):
+        constructSet = []
+        for item in self.edges:
+            pos = (item.uIndex, item.vIndex)
+            value = item.isUnderConstruct
+            if value == 1:
+                constructSet.append(pos)
+        return constructSet
     def getNodeNum(self):
         return len(self.nodes)
+    def refineDemand(self, rate):
+        for item in self.demands:
+            item.localDemand = item.localDemand * rate * 0.9
+    def randomlyChooseEdgeUnderConstructWithProb(self, prob):
+        for item in self.edges:
+            if rd.uniform(0, 1) <= prob and item.vIndex <item.uIndex:
+                item.isUnderConstruct = 1
+                for itemA in self.edges:
+                    if itemA.uIndex == item.vIndex and itemA.vIndex == item.uIndex:
+                        itemA.isUnderConstruct = 1
 
 
