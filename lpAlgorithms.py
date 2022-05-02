@@ -2,6 +2,36 @@ import gurobipy as gp
 from gurobipy import GRB
 gp.setParam('OutputFlag', 0)
 gp.setParam('Heuristics', 0)
+gp.setParam('PreCrush', 1)
+
+cuttingNum = 1
+directNum = 1
+def testZeroCallbackMIPNODE(model,where):
+    global cuttingNum
+    global directNum
+    if where == GRB.Callback.MIPNODE:
+        status = model.cbGet(GRB.Callback.MIPNODE_STATUS)
+        if status == GRB.OPTIMAL:
+            print("cutting plane:" + str(directNum))
+            directNum = directNum + 1
+
+
+
+def testCallbackMIPNODE(model, where):
+    global cuttingNum
+    global directNum
+    if where == GRB.Callback.MIPNODE:
+        status = model.cbGet(GRB.Callback.MIPNODE_STATUS)
+        if status == GRB.OPTIMAL:
+            print("cutting plane:" + str(cuttingNum))
+            cuttingNum =  cuttingNum + 1
+            conCurrSetState = model.cbGetNodeRel(model._conSetState)
+            value, alphaStar = solveDualConcurrentLP(model._dPairs, model._ELCIsW, conCurrSetState, model._nNum)
+            model.cbCut(gp.quicksum(model._capacities[u,v]* alphaStar[u,v] * model._conSetState[u,v] for u,v in model._conEdgeSet)\
+                <= gp.quicksum(model._capacities[u,v] * alphaStar[u,v] for u,v in model._edges) - 1)
+                
+
+
 def solveConcurrentFlow(demandPairs, edgeLengthCapacity, nodeNum):
     nodes = range(nodeNum)
     stPairs, demands =gp.multidict(demandPairs)
@@ -41,13 +71,13 @@ def solveDirectMIPGP(demandPairs, edgeLengthCapacityIsUnderConstructWeight, cons
     flow = model.addVars(stPairs, edges, lb=0.0, name="flow")
     conSet = model.addVars(constructEdgeSet, lb=0.0, ub=1.0, vtype=GRB.BINARY, name="conSet")
     model._conSetState = conSet
-    model._cap = capacities
+    model._capacities = capacities
     model._edges = edges
     model._conEdgeSet= constructEdgeSet
     model._nNum = nodeNum
     model._dPairs = demandPairs
     model._ELCIsW = edgeLengthCapacityIsUnderConstructWeight
-    
+
 
     model.setObjective(gp.quicksum(weight[u,v]*conSet[u,v] for u,v in constructEdgeSet), GRB.MAXIMIZE)
     for u,v in edges:
@@ -67,7 +97,7 @@ def solveDirectMIPGP(demandPairs, edgeLengthCapacityIsUnderConstructWeight, cons
                 model.addConstr(gp.quicksum(flow[s,t,u,v] for u,v in edges.select(node,'*'))\
                 - gp.quicksum(flow[s,t,u,v] for u,v in edges.select('*', node)) == 0, "node")
 
-    model.optimize()
+    model.optimize(testZeroCallbackMIPNODE)
     objValue = model.getObjective().getValue()
     #conSetResult = [var.X for var in model.getVars() if "conSet" in var.VarName]
     conSetResult = {}
@@ -105,14 +135,9 @@ def solveDualConcurrentLP(demandPairs, edgeLengthCapacityIsUnderConstructWeight,
         alphaValue[u,v] = alpha[u,v].X
     return objValue, alphaValue
 
-def testCallbackMIPNODE(model, where):
-    if where == GRB.Callback.MIPNODE:
-        status = model.cbGet(GRB.Callback.MIPNODE_STATUS)
-        if status == GRB.OPTIMAL:
-            conCurrSetState = model.cbGetNodeRel(model._conSetState)
-            value, alphaStar = solveDualConcurrentLP(model._dPairs, model._ELCIsw, conCurrSetState, model._nNum)
-            model.cbCut(gp.quicksum(model._capacities[u,v]* alphaStar[u,v] * model._consetState[u,v] for u,v in model._conEdgeSet)\
-                < gp.quicksum(model._capacities[u,v] * alphaStar[u,v] for u,v in model._edges) - 1)
+
+      
+                
 
 
 def solveMIPGPWithCut(demandPairs, edgeLengthCapacityIsUnderConstructWeight, constructEdgeSet, nodeNum):
@@ -124,13 +149,13 @@ def solveMIPGPWithCut(demandPairs, edgeLengthCapacityIsUnderConstructWeight, con
     flow = model.addVars(stPairs, edges, lb=0.0, name="flow")
     conSet = model.addVars(constructEdgeSet, lb=0.0, ub=1.0, vtype=GRB.BINARY, name="conSet")
     model._conSetState = conSet
-    model._cap = capacities
+    model._capacities = capacities
     model._edges = edges
     model._conEdgeSet= constructEdgeSet
     model._nNum = nodeNum
     model._dPairs = demandPairs
     model._ELCIsW = edgeLengthCapacityIsUnderConstructWeight
-    
+
 
     model.setObjective(gp.quicksum(weight[u,v]*conSet[u,v] for u,v in constructEdgeSet), GRB.MAXIMIZE)
     for u,v in edges:

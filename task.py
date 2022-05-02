@@ -1,23 +1,29 @@
 import graph as gp
 import lpAlgorithms as lpa
 
-def refineNetwork():
+def refineNetwork(num):
     g = gp.Graph()
-    g.readFromFile("graph0.gra")
+    g.readFromFile("graph"+ str(num) +".gra")
     rate = lpa.solveConcurrentFlow(g.generateSTPairDemands(), g.generateEdgeLengthCapacity(), g.getNodeNum())
     print(rate)
     g.refineDemand(rate)
-    g.saveToFileWithName("2")
+    g.saveToFileWithName(str(num) + "r")
 
-def checkNetworkCFRate():
+def checkNetworkCFRateDirect(num):
     g = gp.Graph()
-    g.readFromFile("graph2.gra")
+    g.readFromFile("graph"+ str(num) +".gra")
     rate = lpa.solveConcurrentFlow(g.generateSTPairDemands(), g.generateEdgeLengthCapacity(), g.getNodeNum())
     print("Concurrent maximal delta: " + str(rate))
 
-def calculateDirectMIP():
+def checkNetworkCFRate(num):
     g = gp.Graph()
-    g.readFromFile("graph2.gra")
+    g.readFromFile("graph"+ str(num) + "r" +".gra")
+    rate = lpa.solveConcurrentFlow(g.generateSTPairDemands(), g.generateEdgeLengthCapacity(), g.getNodeNum())
+    print("Concurrent maximal delta: " + str(rate))
+
+def calculateDirectMIP(num):
+    g = gp.Graph()
+    g.readFromFile("graph"+ str(num) + "r" +".gra")
     value, conSetState = lpa.solveDirectMIPGP(g.generateSTPairDemands(),\
         g.generateEdgeLengthCapacityIsUnderconstructWeight(),\
         g.generateConstructSet(), g.getNodeNum())
@@ -28,17 +34,17 @@ def calculateDirectMIP():
         sum = sum + conSetState[u,v]*g.generateEdgeLengthCapacityIsUnderconstructWeight()[u,v][3]
     print("Check the result by variables: " + str(sum))
 
-def checkEmptyDualCCF():
+def checkEmptyDualCCF(num):
     g = gp.Graph()
-    g.readFromFile("graph2.gra")
+    g.readFromFile("graph"+ str(num)+ "r" +".gra")
     emptyDict = {}
     value, _ = lpa.solveDualConcurrentLP( g.generateSTPairDemands(),\
         g.generateEdgeLengthCapacityIsUnderconstructWeight(), emptyDict, g.getNodeNum())
     print("Empty construction set dual test: "+str(value))
 
-def calculateMetIneqCutMIP():
+def calculateMetIneqCutMIP(num):
     g = gp.Graph()
-    g.readFromFile("graph2.gra")
+    g.readFromFile("graph"+ str(num)+ "r" +".gra")
     value, conSetState = lpa.solveMIPGPWithCut(g.generateSTPairDemands(),\
         g.generateEdgeLengthCapacityIsUnderconstructWeight(),\
         g.generateConstructSet(), g.getNodeNum())
@@ -49,7 +55,12 @@ def calculateMetIneqCutMIP():
         sum = sum + conSetState[u,v]*g.generateEdgeLengthCapacityIsUnderconstructWeight()[u,v][3]
     print("Check the result by variables: " + str(sum))
 
-checkNetworkCFRate()
-checkEmptyDualCCF()
-calculateDirectMIP()
-calculateMetIneqCutMIP()
+def testFlow(num):
+    refineNetwork(num)
+    checkNetworkCFRate(num)
+    checkEmptyDualCCF(num)
+    calculateDirectMIP(num)
+    calculateMetIneqCutMIP(num)
+
+
+testFlow(3)
