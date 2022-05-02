@@ -36,6 +36,20 @@ def checkEmptyDualCCF():
         g.generateEdgeLengthCapacityIsUnderconstructWeight(), emptyDict, g.getNodeNum())
     print("Empty construction set dual test: "+str(value))
 
+def calculateMetIneqCutMIP():
+    g = gp.Graph()
+    g.readFromFile("graph2.gra")
+    value, conSetState = lpa.solveMIPGPWithCut(g.generateSTPairDemands(),\
+        g.generateEdgeLengthCapacityIsUnderconstructWeight(),\
+        g.generateConstructSet(), g.getNodeNum())
+    print("Maximal result from metric inequalities cut: "+ str(value))
+    #test result
+    sum = 0
+    for u,v in conSetState:
+        sum = sum + conSetState[u,v]*g.generateEdgeLengthCapacityIsUnderconstructWeight()[u,v][3]
+    print("Check the result by variables: " + str(sum))
+
 checkNetworkCFRate()
 checkEmptyDualCCF()
 calculateDirectMIP()
+calculateMetIneqCutMIP()

@@ -33,12 +33,21 @@ def solveConcurrentFlow(demandPairs, edgeLengthCapacity, nodeNum):
     obj = model.getObjective()
     return obj.getValue()
 def solveDirectMIPGP(demandPairs, edgeLengthCapacityIsUnderConstructWeight, constructEdgeSet, nodeNum):
+    
     nodes = range(nodeNum)
     stPairs, demands =gp.multidict(demandPairs)
     edges, _, capacities, _, weight = gp.multidict(edgeLengthCapacityIsUnderConstructWeight)
     model = gp.Model('directMIP')
     flow = model.addVars(stPairs, edges, lb=0.0, name="flow")
     conSet = model.addVars(constructEdgeSet, lb=0.0, ub=1.0, vtype=GRB.BINARY, name="conSet")
+    model._conSetState = conSet
+    model._cap = capacities
+    model._edges = edges
+    model._conEdgeSet= constructEdgeSet
+    model._nNum = nodeNum
+    model._dPairs = demandPairs
+    model._ELCIsW = edgeLengthCapacityIsUnderConstructWeight
+    
 
     model.setObjective(gp.quicksum(weight[u,v]*conSet[u,v] for u,v in constructEdgeSet), GRB.MAXIMIZE)
     for u,v in edges:
@@ -96,4 +105,56 @@ def solveDualConcurrentLP(demandPairs, edgeLengthCapacityIsUnderConstructWeight,
         alphaValue[u,v] = alpha[u,v].X
     return objValue, alphaValue
 
+def testCallbackMIPNODE(model, where):
+    if where == GRB.Callback.MIPNODE:
+        status = model.cbGet(GRB.Callback.MIPNODE_STATUS)
+        if status == GRB.OPTIMAL:
+            conCurrSetState = model.cbGetNodeRel(model._conSetState)
+            value, alphaStar = solveDualConcurrentLP(model._dPairs, model._ELCIsw, conCurrSetState, model._nNum)
+            model.cbCut(gp.quicksum(model._capacities[u,v]* alphaStar[u,v] * model._consetState[u,v] for u,v in model._conEdgeSet)\
+                < gp.quicksum(model._capacities[u,v] * alphaStar[u,v] for u,v in model._edges) - 1)
 
+
+def solveMIPGPWithCut(demandPairs, edgeLengthCapacityIsUnderConstructWeight, constructEdgeSet, nodeNum):
+    
+    nodes = range(nodeNum)
+    stPairs, demands =gp.multidict(demandPairs)
+    edges, _, capacities, _, weight = gp.multidict(edgeLengthCapacityIsUnderConstructWeight)
+    model = gp.Model('directMIP')
+    flow = model.addVars(stPairs, edges, lb=0.0, name="flow")
+    conSet = model.addVars(constructEdgeSet, lb=0.0, ub=1.0, vtype=GRB.BINARY, name="conSet")
+    model._conSetState = conSet
+    model._cap = capacities
+    model._edges = edges
+    model._conEdgeSet= constructEdgeSet
+    model._nNum = nodeNum
+    model._dPairs = demandPairs
+    model._ELCIsW = edgeLengthCapacityIsUnderConstructWeight
+    
+
+    model.setObjective(gp.quicksum(weight[u,v]*conSet[u,v] for u,v in constructEdgeSet), GRB.MAXIMIZE)
+    for u,v in edges:
+        if (u,v) in constructEdgeSet:
+            model.addConstr(sum(flow[s,t,u,v] for s,t in stPairs) <= capacities[u,v] * (1 - conSet[u,v]), "cap[%s,%s]" % (u,v))
+        else:
+            model.addConstr(sum(flow[s,t,u,v] for s,t in stPairs) <= capacities[u,v], "cap[%s,%s]" % (u,v))
+    for s,t in stPairs:
+        for node in nodes:
+            if node == s:
+                model.addConstr(gp.quicksum(flow[s,t,u,v] for u,v in edges.select(node,'*'))\
+                - gp.quicksum(flow[s,t,u,v] for u,v in edges.select('*', node)) == demands[s,t], "node")
+            elif node == t:
+                model.addConstr(gp.quicksum(flow[s,t,u,v] for u,v in edges.select(node,'*'))\
+                - gp.quicksum(flow[s,t,u,v] for u,v in edges.select('*', node)) == -demands[s,t], "node")
+            else:
+                model.addConstr(gp.quicksum(flow[s,t,u,v] for u,v in edges.select(node,'*'))\
+                - gp.quicksum(flow[s,t,u,v] for u,v in edges.select('*', node)) == 0, "node")
+
+    model.optimize(testCallbackMIPNODE)
+    objValue = model.getObjective().getValue()
+    #conSetResult = [var.X for var in model.getVars() if "conSet" in var.VarName]
+    conSetResult = {}
+    for u,v in conSet:
+        conSetResult[u,v] = conSet[u,v].X
+
+    return objValue, conSetResult
