@@ -3,10 +3,10 @@ import graph as gp
 def generateGraph():
     g = gp.Graph()
     g.generateRandomGraphWith(80, 0.3, 20,40,10,20)
-    g.generateRandomDemand(20,15,30)
+    g.generateRandomDemand(30,15,30)
     g.randomlyChooseEdgeUnderConstructWithProb(0.2)
     g.showGraph()
-    g.saveToFileWithName(3)
+    g.saveToFileWithName(5)
 
 def showGraphByName(num):
     g = gp.Graph()
@@ -23,4 +23,4 @@ print(g.generateConstructSet())
 '''
 
 #generateGraph()
-showGraphByName(3)
+generateGraph()

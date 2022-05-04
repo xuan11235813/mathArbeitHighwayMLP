@@ -1,11 +1,18 @@
+from math import floor
 import gurobipy as gp
 from gurobipy import GRB
 gp.setParam('OutputFlag', 0)
 gp.setParam('Heuristics', 0)
 gp.setParam('PreCrush', 1)
+#gp.setParam('NodeLimit', 1)
+gp.setParam('MIPFocus', 2)
+#gp.setParam('Presolve', 0)
+gp.setParam('Threads', 1)
+gp.setParam('Cuts', 0)
 
 cuttingNum = 1
 directNum = 1
+periodNum = 5
 def testZeroCallbackMIPNODE(model,where):
     global cuttingNum
     global directNum
@@ -30,7 +37,28 @@ def testCallbackMIPNODE(model, where):
             model.cbCut(gp.quicksum(model._capacities[u,v]* alphaStar[u,v] * model._conSetState[u,v] for u,v in model._conEdgeSet)\
                 <= gp.quicksum(model._capacities[u,v] * alphaStar[u,v] for u,v in model._edges) - 1)
                 
-
+def testCallbackInteger(model, where):
+    global cuttingNum
+    global directNum
+    if where == GRB.Callback.MIPNODE:
+        status = model.cbGet(GRB.Callback.MIPNODE_STATUS)
+        if status == GRB.OPTIMAL:
+            print("cutting plane:" + str(cuttingNum))
+            cuttingNum =  cuttingNum + 1
+            conCurrSetState = model.cbGetNodeRel(model._conSetState)
+            value, alphaStar = solveDualConcurrentLP(model._dPairs, model._ELCIsW, conCurrSetState, model._nNum)
+            minPara = 100000000
+            for u,v in model._conEdgeSet:
+                currValue = model._capacities[u,v]* alphaStar[u,v]
+                if currValue > 0:
+                    if currValue < minPara:
+                        minPara = currValue
+            lambdaValue = 1.01/minPara
+            paraDict = {}
+            for u,v in model._conEdgeSet:
+                paraDict[(u,v)] = floor(lambdaValue * model._capacities[u,v]* alphaStar[u,v])
+            rightSide = floor((sum(model._capacities[u,v] * alphaStar[u,v] for u,v in model._edges) - 1)* lambdaValue)
+            model.cbCut(gp.quicksum(paraDict[u,v] * model._conSetState[u,v] for u,v in model._conEdgeSet) <= rightSide)
 
 def solveConcurrentFlow(demandPairs, edgeLengthCapacity, nodeNum):
     nodes = range(nodeNum)
@@ -183,3 +211,58 @@ def solveMIPGPWithCut(demandPairs, edgeLengthCapacityIsUnderConstructWeight, con
         conSetResult[u,v] = conSet[u,v].X
 
     return objValue, conSetResult
+
+
+def solveDirectMIPGPWithPeriod(demandPairs, edgeLengthCapacityIsUnderConstructWeight, constructEdgeSet, nodeNum):
+    global periodNum
+    nodes = range(nodeNum)
+    periods = range(periodNum)
+    stPairs, demands =gp.multidict(demandPairs)
+    edges, _, capacities, _, weight = gp.multidict(edgeLengthCapacityIsUnderConstructWeight)
+    model = gp.Model('directMIPWithPeriod')
+    flow = model.addVars(periods, stPairs, edges, lb=0.0, name="flow")
+    conSet = model.addVars(periods, constructEdgeSet, lb=0.0, ub=1.0, vtype=GRB.BINARY, name="conSet")
+    z = model.addVar(lb=0.0, name="z")
+    model._conSetState = conSet
+    model._capacities = capacities
+    model._edges = edges
+    model._conEdgeSet= constructEdgeSet
+    model._nNum = nodeNum
+    model._dPairs = demandPairs
+    model._ELCIsW = edgeLengthCapacityIsUnderConstructWeight
+    model._periods = periods
+
+
+    model.setObjective(z, GRB.MINIMIZE)
+    for u,v in constructEdgeSet:
+        model.addConstr(sum(conSet[i,u,v] for i in periods) == 1)
+    for i in periods:
+        model.addConstr(gp.quicksum(weight[u,v]*conSet[i,u,v] for u,v in constructEdgeSet) <= z)
+        for u,v in edges:
+            if (u,v) in constructEdgeSet:
+                model.addConstr(sum(flow[i,s,t,u,v] for s,t in stPairs) <= capacities[u,v] * (1 - conSet[i,u,v]), "cap[%s,%s, %s]" % (u,v,i))
+            else:
+                model.addConstr(sum(flow[i,s,t,u,v] for s,t in stPairs) <= capacities[u,v], "cap[%s,%s]" % (u,v))
+        for s,t in stPairs:
+            for node in nodes:
+                if node == s:
+                    model.addConstr(gp.quicksum(flow[i,s,t,u,v] for u,v in edges.select(node,'*'))\
+                    - gp.quicksum(flow[i,s,t,u,v] for u,v in edges.select('*', node)) == demands[s,t], "node")
+                elif node == t:
+                    model.addConstr(gp.quicksum(flow[i,s,t,u,v] for u,v in edges.select(node,'*'))\
+                    - gp.quicksum(flow[i,s,t,u,v] for u,v in edges.select('*', node)) == -demands[s,t], "node")
+                else:
+                    model.addConstr(gp.quicksum(flow[i,s,t,u,v] for u,v in edges.select(node,'*'))\
+                    - gp.quicksum(flow[i,s,t,u,v] for u,v in edges.select('*', node)) == 0, "node")
+
+    model.optimize()
+    objValue = model.getObjective().getValue()
+    #conSetResult = [var.X for var in model.getVars() if "conSet" in var.VarName]
+    conSetResult = []
+    for i in periods:
+        conSetResultItem = {}
+        for u,v in constructEdgeSet:
+            conSetResultItem[u,v] = conSet[i,u,v].X
+        conSetResult.append(conSetResultItem)
+    return objValue, conSetResult
+
