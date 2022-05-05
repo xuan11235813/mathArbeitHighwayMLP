@@ -2,6 +2,7 @@ import random as rd
 import networkx as nx
 import matplotlib.pyplot as plt
 from datetime import datetime
+import lpAlgorithms as lpa
 
 
 class Node:
@@ -45,6 +46,41 @@ class Graph:
     def setWitNodesAndEdges(self, nodes, edges):
         self.nodes = nodes
         self.edges = edges
+    def generateGridStarWithNum(self, num):
+        for i in range(num*3 + 1):
+            nodeItem = Node(i)
+            self.nodes.append(nodeItem)
+        for i in range(num):
+            A = 0
+            if len(self.edges) > 0:
+                A = rd.choice(self.edges).vIndex
+            
+            B = i * 3 + 1
+            C = i * 3 + 2
+            D = i * 3 + 3
+
+            edgeAB = DirectedEdge(A,B,10,10,float(round(rd.uniform(10,50))))
+            edgeAC = DirectedEdge(A,C,10,10,float(round(rd.uniform(10,50))))
+            edgeAD = DirectedEdge(A,D,10,10,float(round(rd.uniform(10,50))))
+            edgeDB = DirectedEdge(D,B,10,10,float(round(rd.uniform(10,50))))
+            edgeDC = DirectedEdge(D,C,10,10,float(round(rd.uniform(10,50))))
+            edgeAB.isUnderConstruct = 1
+            edgeAC.isUnderConstruct = 1
+            edgeDB.isUnderConstruct = 1
+            edgeDC.isUnderConstruct = 1
+
+            demandAB = Demand(A,B,10)
+            demandAC = Demand(A,C,10)
+
+            self.edges.append(edgeAB)
+            self.edges.append(edgeAC)
+            self.edges.append(edgeAD)
+            self.edges.append(edgeDB)
+            self.edges.append(edgeDC)
+
+            self.demands.append(demandAB)
+            self.demands.append(demandAC)
+
 
     def generateRandomGraphWith(self, nodeNum, edgeGenerationProbability, capacityLB, capacityUB, weightLB, weightUB):
         for i in range(nodeNum):
@@ -59,6 +95,55 @@ class Graph:
                     edgeItemInverse = DirectedEdge(edgeItem.vIndex,edgeItem.uIndex,edgeItem.length,edgeItem.capacity, edgeItem.weight)
                     self.edges.append(edgeItem)
                     self.edges.append(edgeItemInverse)
+        unConnectedNodes = []
+        connectedNodes = []
+        for i in range(nodeNum):
+            currFlag = True
+            for edgeItem in self.edges:
+                if edgeItem.vIndex == i or edgeItem.uIndex == i:
+                    currFlag = False
+                    break
+            if currFlag == True:
+                unConnectedNodes.append(i)
+            else:
+                connectedNodes.append(i)
+        
+        for node in unConnectedNodes:
+            nodeNext = rd.choice(connectedNodes)
+            edgeItem = DirectedEdge(node,nodeNext,float(round(rd.uniform(1,11))),\
+                        float(round(rd.uniform(capacityLB,capacityUB))), \
+                        float(round(rd.uniform(weightLB,weightUB))))
+            edgeItemInverse = DirectedEdge(edgeItem.vIndex,edgeItem.uIndex,edgeItem.length,edgeItem.capacity, edgeItem.weight)
+            self.edges.append(edgeItem)
+            self.edges.append(edgeItemInverse)
+        
+        connectedNodes = [0]
+        flag = False
+        while flag == False:
+            currEnd = False
+            flag = True
+            while currEnd == False:
+                currEnd = True
+                for startNode in connectedNodes:
+                    for edgeItem in self.edges:
+                        if edgeItem.vIndex == startNode and (edgeItem.uIndex not in connectedNodes):
+                            connectedNodes.append(edgeItem.uIndex)
+                            currEnd = False
+                        if edgeItem.uIndex == startNode and (edgeItem.vIndex not in connectedNodes):
+                            connectedNodes.append(edgeItem.vIndex)
+                            currEnd = False
+            for i in range(nodeNum):
+                if i not in connectedNodes:
+                    flag = False
+                    nodeNext = rd.choice(connectedNodes)
+                    edgeItem = DirectedEdge(i,nodeNext,float(round(rd.uniform(1,11))),\
+                        float(round(rd.uniform(capacityLB,capacityUB))), \
+                        float(round(rd.uniform(weightLB,weightUB))))
+                    edgeItemInverse = DirectedEdge(edgeItem.vIndex,edgeItem.uIndex,edgeItem.length,edgeItem.capacity, edgeItem.weight)
+                    self.edges.append(edgeItem)
+                    self.edges.append(edgeItemInverse)
+                    break
+
         
 
     def generateRandomDemand(self, demandNum, demandLB, demandUB):
@@ -69,8 +154,10 @@ class Graph:
             for i in range(len(self.nodes)):
                 for j in range(len(self.nodes)):
                     if rd.uniform(0, 1) <= rate and i != j:
-                        demandItem = Demand(i,j, float(round(rd.uniform(demandLB, demandUB))))
-                        self.demands.append(demandItem)
+                        demandItem1 = Demand(i,j, float(round(rd.uniform(demandLB, demandUB))))
+                        demandItem2 = Demand(j,i, float(round(rd.uniform(demandLB, demandUB))))
+                        self.demands.append(demandItem1)
+                        self.demands.append(demandItem2)
             return True
     
     def showGraph(self):
@@ -207,7 +294,26 @@ class Graph:
         return len(self.nodes)
     def refineDemand(self, rate):
         for item in self.demands:
-            item.localDemand = item.localDemand * rate * 0.9
+            item.localDemand = item.localDemand * rate * 0.95
+    def refineWithCCLP(self):
+        rate = lpa.solveConcurrentFlow(self.generateSTPairDemands(), self.generateEdgeLengthCapacity(), self.getNodeNum())
+        if rate < 1:
+            for demandItem in self.demands:
+                demandItem.localDemand = demandItem.localDemand*rate
+                rateNew = lpa.solveConcurrentFlow(self.generateSTPairDemands(), self.generateEdgeLengthCapacity(), self.getNodeNum())
+                if rateNew == rate:
+                    demandItem.localDemand = demandItem.localDemand/rate
+                if rateNew >= 1:
+                    break
+        rate = lpa.solveConcurrentFlow(self.generateSTPairDemands(), self.generateEdgeLengthCapacity(), self.getNodeNum())
+        if rate <= 1:
+            for demandItem in self.demands:
+                demandItem.localDemand = demandItem.localDemand*1.1
+                rateNew = lpa.solveConcurrentFlow(self.generateSTPairDemands(), self.generateEdgeLengthCapacity(), self.getNodeNum())
+                if rateNew < rate:
+                    demandItem.localDemand = demandItem.localDemand/1.1
+
+
     def randomlyChooseEdgeUnderConstructWithProb(self, prob):
         for item in self.edges:
             if rd.uniform(0, 1) <= prob and item.vIndex <item.uIndex:

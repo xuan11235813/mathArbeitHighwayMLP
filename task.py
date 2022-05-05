@@ -5,21 +5,36 @@ from datetime import datetime
 def refineNetwork(num):
     g = gp.Graph()
     g.readFromFile("graph"+ str(num) +".gra")
-    rate = lpa.solveConcurrentFlow(g.generateSTPairDemands(), g.generateEdgeLengthCapacity(), g.getNodeNum())
+    rate = lpa.solveConcurrentFlow(g.generateSTPairDemands(), g.generateEdgeLengthCapacityIsUnderconstructWeight(), g.getNodeNum())
     print(rate)
+    g.refineDemand(rate)
+    g.saveToFileWithName(str(num) + "r")
+
+def refineNetworkWithCCLP(num):
+    g = gp.Graph()
+    g.readFromFile("graph"+ str(num) +".gra")
+    rate = lpa.solveConcurrentFlow(g.generateSTPairDemands(), g.generateEdgeLengthCapacityIsUnderconstructWeight(), g.getNodeNum())
+    while rate <= 0.98:
+        print(rate)
+        g.refineWithCCLP()
+        rate = lpa.solveConcurrentFlow(g.generateSTPairDemands(), g.generateEdgeLengthCapacityIsUnderconstructWeight(), g.getNodeNum())
+    for i in range(5):
+        g.refineWithCCLP()
+        rate = lpa.solveConcurrentFlow(g.generateSTPairDemands(), g.generateEdgeLengthCapacityIsUnderconstructWeight(), g.getNodeNum())
+        print(rate)
     g.refineDemand(rate)
     g.saveToFileWithName(str(num) + "r")
 
 def checkNetworkCFRateDirect(num):
     g = gp.Graph()
     g.readFromFile("graph"+ str(num) +".gra")
-    rate = lpa.solveConcurrentFlow(g.generateSTPairDemands(), g.generateEdgeLengthCapacity(), g.getNodeNum())
+    rate = lpa.solveConcurrentFlow(g.generateSTPairDemands(), g.generateEdgeLengthCapacityIsUnderconstructWeight(), g.getNodeNum())
     print("Concurrent maximal delta: " + str(rate))
 
 def checkNetworkCFRate(num):
     g = gp.Graph()
     g.readFromFile("graph"+ str(num) + "r" +".gra")
-    rate = lpa.solveConcurrentFlow(g.generateSTPairDemands(), g.generateEdgeLengthCapacity(), g.getNodeNum())
+    rate = lpa.solveConcurrentFlow(g.generateSTPairDemands(), g.generateEdgeLengthCapacityIsUnderconstructWeight(), g.getNodeNum())
     print("Concurrent maximal delta: " + str(rate))
 
 def calculateDirectMIP(num):
@@ -79,16 +94,39 @@ def calculateDirectMIPWithPeriod(num):
     dt = datetime.now()
     tsEnd = datetime.timestamp(dt)
     print("Minimal result of periods from direct gurobi: "+ str(value) + ",time: " + str(int((tsEnd - tsPre)*100)/100))
-    for item in conSetState:
-        print(item)
+    
+    #for item in conSetState:
+    #    print(item)
+        
+def calculateDdirectMIPWithPeriodAfterFlow(num):
+    g = gp.Graph()
+    g.readFromFile("graph"+ str(num)+ "r" +".gra")
+    dt = datetime.now()
+    tsPre = datetime.timestamp(dt)
+    value, conSetState = lpa.solveAfterFlowConstriant(g.generateSTPairDemands(),\
+        g.generateEdgeLengthCapacityIsUnderconstructWeight(),\
+        g.generateConstructSet(), g.getNodeNum())
+    dt = datetime.now()
+    tsEnd = datetime.timestamp(dt)
+    print("Minimal result of periods from direct gurobi: "+ str(value) + ",time: " + str(int((tsEnd - tsPre)*100)/100))
+    #for item in conSetState:
+    #    print(item)
 
-def testSingleMaxWeight(num):
-    refineNetwork(num)
+
+def testSingleMaxWeight(num, type):
     checkNetworkCFRate(num)
     checkEmptyDualCCF(num)
-    calculateDirectMIP(num)
+    if type == 1:
+        calculateDirectMIP(num)
     calculateMetIneqCutMIP(num)
-
-
-testSingleMaxWeight(2)
-calculateDirectMIPWithPeriod(2)
+def refineTheNetwork(num, type):
+    if type == 1:
+        refineNetwork(num)
+    elif type ==2:
+        refineNetworkWithCCLP(num)
+'''
+refineTheNetwork(8,1)
+testSingleMaxWeight(8,2)
+'''
+calculateDirectMIPWithPeriod("10t")
+calculateDdirectMIPWithPeriodAfterFlow("10t")
