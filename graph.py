@@ -146,7 +146,21 @@ class Graph:
 
         
 
-    def generateRandomDemand(self, demandNum, demandLB, demandUB):
+    def generateRandomDemandBidirection(self, demandNum, demandLB, demandUB):
+        if len(self.nodes) * (len(self.nodes) - 1) * 0.3 <= demandNum:
+            return False
+        else:
+            rate = demandNum/(len(self.nodes) * (len(self.nodes) - 1))
+            for i in range(len(self.nodes)):
+                for j in range(len(self.nodes)):
+                    if rd.uniform(0, 1) <= rate and i < j:
+                        demandItem1 = Demand(i,j, float(round(rd.uniform(demandLB, demandUB))))
+                        demandItem2 = Demand(j,i, float(round(rd.uniform(demandLB, demandUB))))
+                        self.demands.append(demandItem1)
+                        self.demands.append(demandItem2)
+            return True
+
+    def generateRandomDemandSingleDirection(self, demandNum, demandLB, demandUB):
         if len(self.nodes) * (len(self.nodes) - 1) * 0.3 <= demandNum:
             return False
         else:
@@ -155,9 +169,9 @@ class Graph:
                 for j in range(len(self.nodes)):
                     if rd.uniform(0, 1) <= rate and i != j:
                         demandItem1 = Demand(i,j, float(round(rd.uniform(demandLB, demandUB))))
-                        demandItem2 = Demand(j,i, float(round(rd.uniform(demandLB, demandUB))))
+                        #demandItem2 = Demand(j,i, float(round(rd.uniform(demandLB, demandUB))))
                         self.demands.append(demandItem1)
-                        self.demands.append(demandItem2)
+                        #self.demands.append(demandItem2)
             return True
     
     def showGraph(self):
@@ -173,7 +187,7 @@ class Graph:
         pos = nx.kamada_kawai_layout(G)
         colors = [G[u][v]['color'] for u,v in edges]
         labels = nx.get_node_attributes(G, 'id') 
-        nx.draw(G, pos, labels=labels, edge_color = colors)
+        nx.draw(G,pos, labels=labels, edge_color = colors)
         plt.show()
     def saveToFile(self):
         now = datetime.now()

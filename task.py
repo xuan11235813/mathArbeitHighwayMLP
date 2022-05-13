@@ -124,9 +124,10 @@ def refineTheNetwork(num, type):
         refineNetwork(num)
     elif type ==2:
         refineNetworkWithCCLP(num)
-'''
-refineTheNetwork(8,1)
-testSingleMaxWeight(8,2)
-'''
-calculateDirectMIPWithPeriod("10t")
-calculateDdirectMIPWithPeriodAfterFlow("10t")
+
+refineTheNetwork("1",1)
+testSingleMaxWeight("1",1)
+
+#calculateDdirectMIPWithPeriodAfterFlow("12")
+#calculateDirectMIPWithPeriod("12")
+

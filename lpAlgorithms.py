@@ -12,7 +12,7 @@ gp.setParam('Cuts', 0)
 
 cuttingNum = 1
 directNum = 1
-periodNum = 10
+periodNum = 2
 def testZeroCallbackMIPNODE(model,where):
     global cuttingNum
     global directNum
@@ -36,6 +36,25 @@ def testCallbackMIPNODE(model, where):
             value, alphaStar = solveDualConcurrentLP(model._dPairs, model._ELCIsW, conCurrSetState, model._nNum)
             model.cbCut(gp.quicksum(model._capacities[u,v]* alphaStar[u,v] * model._conSetState[u,v] for u,v in model._conEdgeSet)\
                 <= gp.quicksum(model._capacities[u,v] * alphaStar[u,v] for u,v in model._edges) - 1)
+
+def testCallbackMIPNODEStrict(model, where):
+    global cuttingNum
+    global directNum
+    if where == GRB.Callback.MIPNODE:
+        status = model.cbGet(GRB.Callback.MIPNODE_STATUS)
+        if status == GRB.OPTIMAL:
+            print("cutting plane:" + str(cuttingNum))
+            cuttingNum =  cuttingNum + 1
+            conCurrSetState = model.cbGetNodeRel(model._conSetState)
+            value, alphaStar = solveDualConcurrentLP(model._dPairs, model._ELCIsW, conCurrSetState, model._nNum)
+            params = []
+            for u,v in model._conEdgeSet:
+                params.append(model._capacities[u,v]* alphaStar[u,v])
+            currValue = sum(model._capacities[u,v] * alphaStar[u,v] for u,v in model._edges) -1
+            delta = solveMinDistInt(params, currValue)
+            model.cbCut(gp.quicksum(model._capacities[u,v]* alphaStar[u,v] * model._conSetState[u,v] for u,v in model._conEdgeSet)\
+                <= gp.quicksum(model._capacities[u,v] * alphaStar[u,v] for u,v in model._edges) - 1 - delta)
+            
 
 def testCallbackMIPNODEWithPeriods(model, where):
     global cuttingNum
@@ -107,6 +126,7 @@ def solveConcurrentFlow(demandPairs, edgeLengthCapacityIsUnderConstructWeight, n
 
     obj = model.getObjective()
     return obj.getValue()
+
 def solveConcurrentFlowUnderconstruct(demandPairs, edgeLengthCapacityIsUnderConstructWeight, nodeNum, constructParam):
     nodes = range(nodeNum)
     stPairs, demands =gp.multidict(demandPairs)
@@ -215,6 +235,15 @@ def solveDualConcurrentLP(demandPairs, edgeLengthCapacityIsUnderConstructWeight,
         alphaValue[u,v] = alpha[u,v].X
     return objValue, alphaValue
 
+def solveMinDistInt(para, currValue):
+    model = gp.Model('MinDist')
+    conState = model.addVars(len(para), lb = 0.0, ub = 1.0, vtype=GRB.BINARY, name="conState")
+    delta = model.addVar(lb=0.0)
+    model.setObjective(delta, GRB.MINIMIZE)
+    model.addConstr(gp.quicksum(para[i]*conState[i] for i in range(len(para))) + delta == currValue)
+    model.optimize()
+    objValue = model.getObjective().getValue()
+    return objValue
 
 def solveMIPGPWithCut(demandPairs, edgeLengthCapacityIsUnderConstructWeight, constructEdgeSet, nodeNum):
     
@@ -251,7 +280,7 @@ def solveMIPGPWithCut(demandPairs, edgeLengthCapacityIsUnderConstructWeight, con
                 model.addConstr(gp.quicksum(flow[s,t,u,v] for u,v in edges.select(node,'*'))\
                 - gp.quicksum(flow[s,t,u,v] for u,v in edges.select('*', node)) == 0, "node")
 
-    model.optimize(testCallbackMIPNODE)
+    model.optimize(testCallbackMIPNODEStrict)
     objValue = model.getObjective().getValue()
     #conSetResult = [var.X for var in model.getVars() if "conSet" in var.VarName]
     conSetResult = {}
